@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/mocks/db';
 
-export async function GET(request: Request, { params }: { params: { uuid: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ uuid: string }> }) {
   const { uuid } = await params;
   
   const project = db.getProject(uuid);
