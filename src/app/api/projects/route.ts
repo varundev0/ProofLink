@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
 import { db } from '@/lib/mocks/db';
+
+const generateShortId = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = 'PRJ-';
+  for (let i = 0; i < 4; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
 
 export async function POST(request: Request) {
   try {
@@ -11,19 +19,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const uuid = uuidv4();
+    const projectId = generateShortId();
     
     db.createProject({
-      uuid,
+      projectId,
       freelancerEmail,
       title,
       amount: parseFloat(amount),
       status: 'pending',
-      proofFileUrl: `/mock-proof-${uuid}.jpg`, // Simulating uploaded file URL
-      finalFileUrl: `/mock-final-${uuid}.zip`
+      proofFileUrl: `/mock-proof-${projectId}.jpg`,
+      finalFileUrl: `/mock-final-${projectId}.zip`
     });
 
-    return NextResponse.json({ uuid, success: true });
+    return NextResponse.json({ projectId, success: true });
   } catch (error) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ShieldCheck, Download, Lock, AlertCircle } from 'lucide-react';
+import Link from 'next/link';
+import { ShieldCheck, Download, Lock, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useMockRazorpay } from '@/lib/mocks/MockRazorpayProvider';
 
 type ProjectData = {
   project: {
-    uuid: string;
+    projectId: string;
     freelancerEmail: string;
     title: string;
     amount: number;
@@ -29,7 +30,7 @@ export default function ClientGate() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch(`/api/projects/${params.uuid}`);
+        const res = await fetch(`/api/projects/${params.projectId}`);
         if (res.ok) {
           const json = await res.json();
           setData(json);
@@ -40,14 +41,14 @@ export default function ClientGate() {
         setLoading(false);
       }
     };
-    if (params.uuid) fetchData();
-  }, [params.uuid]);
+    if (params.projectId) fetchData();
+  }, [params.projectId]);
 
   const handlePay = () => {
     if (!data) return;
     openModal(data.project.amount, async () => {
       // Simulate webhook processing
-      const res = await fetch(`/api/projects/${params.uuid}/pay`, { method: 'POST' });
+      const res = await fetch(`/api/projects/${params.projectId}/pay`, { method: 'POST' });
       if (res.ok) {
         setData((prev) => prev ? { ...prev, project: { ...prev.project, status: 'paid' } } : null);
       }
@@ -57,7 +58,7 @@ export default function ClientGate() {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const res = await fetch(`/api/projects/${params.uuid}/download`);
+      const res = await fetch(`/api/projects/${params.projectId}/download`);
       const json = await res.json();
       if (json.signedUrl) {
         alert(`Simulating Download from Signed URL:\n${json.signedUrl}`);
@@ -80,7 +81,7 @@ export default function ClientGate() {
   }
 
   if (!data) {
-    return <div className="min-h-screen flex items-center justify-center text-red-500">Project not found.</div>;
+    return <div className="min-h-screen flex items-center justify-center text-red-500">Project not found. Please check your Tracking Code.</div>;
   }
 
   const { project, freelancer } = data;
@@ -90,15 +91,26 @@ export default function ClientGate() {
     <main className="min-h-screen flex flex-col items-center justify-center p-6">
       
       {/* Trust Badge */}
-      <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-green-500/10 text-green-400 px-4 py-2 rounded-full border border-green-500/20 text-sm">
-        <ShieldCheck size={16} />
-        <span>Verified Deal via Prooflink</span>
-        <span className="opacity-50 mx-1">|</span>
-        <span className="opacity-80">{freelancer.deal_count} successful deals</span>
+      <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-green-500/10 text-green-400 px-4 py-2 rounded-full border border-green-500/20 text-sm w-max max-w-full z-50">
+        <ShieldCheck size={16} className="shrink-0" />
+        <span className="truncate">Verified Deal via Prooflink</span>
+        <span className="opacity-50 mx-1 shrink-0">|</span>
+        <span className="opacity-80 shrink-0">{freelancer.deal_count} deals</span>
       </div>
 
       <div className="max-w-2xl w-full">
-        <div className="glass-card overflow-hidden rounded-2xl flex flex-col md:flex-row">
+        {/* Project ID Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="bg-white/5 border border-white/10 px-3 py-1 rounded-md">
+            <span className="text-xs text-gray-500 mr-2">DROP ID</span>
+            <code className="text-accent text-sm font-bold">{project.projectId}</code>
+          </div>
+          <Link href="/" className="text-sm text-gray-400 hover:text-white flex items-center gap-1 transition-colors">
+            <ArrowLeft size={16} /> Back to Home
+          </Link>
+        </div>
+
+        <div className="glass-card overflow-hidden rounded-2xl flex flex-col md:flex-row relative z-10">
           
           {/* Proof Preview Area */}
           <div className="md:w-1/2 bg-black/50 border-r border-white/5 relative min-h-[300px] flex items-center justify-center p-8 group">
@@ -122,7 +134,7 @@ export default function ClientGate() {
             <div className="mb-8">
               <p className="text-xs text-accent font-semibold tracking-wider uppercase mb-2">Project Delivery</p>
               <h1 className="text-2xl font-bold text-white mb-2">{project.title}</h1>
-              <p className="text-gray-400 text-sm">From: {project.freelancerEmail}</p>
+              <p className="text-gray-400 text-sm truncate">From: {project.freelancerEmail}</p>
             </div>
 
             <div className="space-y-4 mt-auto">

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 export type Project = {
-  uuid: string;
+  projectId: string;
   freelancerEmail: string;
   title: string;
   amount: number;
@@ -36,19 +36,19 @@ const writeDb = (data: DbSchema) => {
 };
 
 export const db = {
-  getProject: (uuid: string): Project | undefined => {
+  getProject: (projectId: string): Project | undefined => {
     const data = readDb();
-    return data.projects[uuid];
+    return data.projects[projectId];
   },
   createProject: (project: Project) => {
     const data = readDb();
-    data.projects[project.uuid] = project;
+    data.projects[project.projectId] = project;
     writeDb(data);
   },
-  updateProjectStatus: (uuid: string, status: 'pending' | 'paid') => {
+  updateProjectStatus: (projectId: string, status: 'pending' | 'paid') => {
     const data = readDb();
-    if (data.projects[uuid]) {
-      data.projects[uuid].status = status;
+    if (data.projects[projectId]) {
+      data.projects[projectId].status = status;
       writeDb(data);
     }
   },
