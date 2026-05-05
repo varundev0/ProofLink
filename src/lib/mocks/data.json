@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "90ab3ab2-e031-4634-98a7-d67a5540c09b": {
+      "uuid": "90ab3ab2-e031-4634-98a7-d67a5540c09b",
+      "freelancerEmail": "test@example.com",
+      "title": "Logo Design",
+      "amount": 5000,
+      "status": "paid",
+      "proofFileUrl": "/mock-proof-90ab3ab2-e031-4634-98a7-d67a5540c09b.jpg",
+      "finalFileUrl": "/mock-final-90ab3ab2-e031-4634-98a7-d67a5540c09b.zip"
+    }
+  },
+  "profiles": {
+    "freelancer_1": {
+      "deal_count": 1
+    }
+  }
+}
