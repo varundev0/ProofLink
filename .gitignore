@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ProofLink — local storage and mock data (never commit real files or user data)
+/storage/finals/*
+!/storage/finals/.gitkeep
+/public/uploads/proofs/*
+!/public/uploads/proofs/.gitkeep
+/src/lib/mocks/data.json

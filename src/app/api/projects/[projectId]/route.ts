@@ -1,23 +1,34 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/mocks/db';
+import { createSupabaseServiceClient } from '@/lib/supabase/service';
 
-export async function GET(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
   const { projectId } = await params;
-  
-  const project = db.getProject(projectId);
-  
-  if (!project) {
+  const supabase = createSupabaseServiceClient();
+
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('projectId', projectId)
+    .single();
+
+  if (projectError || !project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
-  // Fetch freelancer profile for trust score
-  const profile = db.getProfile('freelancer_1'); // Hardcoding freelancer ID for MVP
+  const { data: freelancer } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', project.freelancerId)
+    .single();
 
-  // Exclude private file URL from response
-  const { finalFileUrl, ...publicProjectData } = project;
+  // Strip the private final file URL before sending to the client
+  const { finalFileUrl: _omit, ...publicProject } = project;
 
   return NextResponse.json({
-    project: publicProjectData,
-    freelancer: profile
+    project: publicProject,
+    freelancer: freelancer ?? { id: project.freelancerId, deal_count: 0 },
   });
 }
