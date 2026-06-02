@@ -106,7 +106,7 @@ class QueryBuilder<T extends Row> {
     try {
       const db = readDb();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const table = db[this.tableName] as Record<string, T>;
+      const table = db[this.tableName] as unknown as Record<string, T>;
 
       switch (this.op) {
         case 'select': {
