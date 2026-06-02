@@ -7,8 +7,10 @@
  * Use this in any route that needs to know WHO is making the request.
  */
 
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieMethodsServer } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+
+type SetAllCookies = Parameters<CookieMethodsServer['setAll']>[0];
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
@@ -21,7 +23,7 @@ export async function createSupabaseServerClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: SetAllCookies) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
