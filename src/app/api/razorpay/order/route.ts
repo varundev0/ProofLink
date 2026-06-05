@@ -6,6 +6,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 
 export async function POST(request: Request) {
@@ -15,6 +16,11 @@ export async function POST(request: Request) {
     if (!projectId) {
       return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
     }
+
+    // Identify the buyer so we can attach their email to the order
+    const serverClient = await createSupabaseServerClient();
+    const { data: { user } } = await serverClient.auth.getUser();
+    const buyerEmail = user?.email ?? null;
 
     const supabase = createSupabaseServiceClient();
     const { data: project, error } = await supabase
@@ -29,6 +35,14 @@ export async function POST(request: Request) {
 
     const keyId = process.env.RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    // Persist buyerEmail on the project so verify/webhook can send the confirmation email
+    if (buyerEmail && !project.buyerEmail) {
+      await supabase
+        .from('projects')
+        .update({ buyerEmail })
+        .eq('projectId', projectId);
+    }
 
     if (!keyId || !keySecret) {
       return NextResponse.json({
@@ -51,6 +65,7 @@ export async function POST(request: Request) {
         amount: Math.round((project.amount as number) * 100),
         currency: 'INR',
         receipt: projectId,
+        notes: { buyerEmail: buyerEmail ?? '' },
       }),
     });
 

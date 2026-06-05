@@ -107,10 +107,15 @@ export async function middleware(request: NextRequest) {
   // ── Session refresh ───────────────────────────────────────────────────────
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookiesToSet) => {
@@ -121,10 +126,21 @@ export async function middleware(request: NextRequest) {
           );
         },
       },
-    }
-  );
+    });
 
-  await supabase.auth.getUser();
+    await supabase.auth.getUser();
+  } catch (err) {
+    console.error('[middleware] Supabase client error:', err);
+
+    // API routes get a 503 — callers need a signal that the service is misconfigured.
+    // Non-API routes pass through; the app layer will surface auth errors as needed.
+    if (path.startsWith('/api/')) {
+      return new NextResponse(
+        JSON.stringify({ error: 'Service temporarily unavailable — configuration error' }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+  }
 
   return response;
 }

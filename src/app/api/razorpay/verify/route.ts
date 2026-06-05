@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { sendPaymentReceivedToFreelancer, sendPaymentConfirmationToBuyer } from '@/lib/email';
 
@@ -89,6 +90,22 @@ export async function POST(request: Request) {
 
     const finalToken = existingToken?.token ?? downloadToken;
 
+    // Resolve buyerEmail: project record (set at order creation) → current session
+    let buyerEmail = (project.buyerEmail as string | null) ?? null;
+    if (!buyerEmail) {
+      const serverClient = await createSupabaseServerClient();
+      const { data: { user } } = await serverClient.auth.getUser();
+      buyerEmail = user?.email ?? null;
+
+      // Back-fill so future webhook/cron paths also have it
+      if (buyerEmail) {
+        await supabase
+          .from('projects')
+          .update({ buyerEmail })
+          .eq('projectId', projectId);
+      }
+    }
+
     // Send emails fire-and-forget — don't block the response
     void sendPaymentReceivedToFreelancer({
       freelancerEmail: project.freelancerEmail as string,
@@ -96,11 +113,9 @@ export async function POST(request: Request) {
       amount: project.amount as number,
       projectId,
     });
-    // Buyer email requires their address — stored on the order; use freelancerEmail
-    // as a proxy if buyerEmail isn't on the project record yet
-    if (project.buyerEmail) {
+    if (buyerEmail) {
       void sendPaymentConfirmationToBuyer({
-        buyerEmail: project.buyerEmail as string,
+        buyerEmail,
         projectTitle: project.title as string,
         amount: project.amount as number,
         projectId,
