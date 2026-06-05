@@ -1,4 +1,5 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const nextConfig: NextConfig = {
   images: {
@@ -13,4 +14,11 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // Suppresses the Sentry CLI update check on every build
+  silent: true,
+  // Hides source maps from the browser bundle (uploaded to Sentry instead)
+  hideSourceMaps: true,
+  // Automatically tree-shake Sentry logger statements in production
+  disableLogger: true,
+});

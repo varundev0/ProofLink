@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { sendPaymentReceivedToFreelancer, sendPaymentConfirmationToBuyer } from '@/lib/email';
 
 export async function POST(request: Request) {
   try {
@@ -56,34 +57,58 @@ export async function POST(request: Request) {
     // Mark project paid
     await supabase
       .from('projects')
-      .update({ status: 'paid' })
+      .update({ status: 'paid', paidAt: new Date().toISOString() })
       .eq('projectId', projectId);
 
-    // Increment deal count
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', project.freelancerId)
-      .single();
+    // Atomically increment deal count — avoids read-then-write race condition
+    await supabase.rpc('increment_deal_count', { user_id: project.freelancerId });
 
-    await supabase.from('profiles').upsert({
-      id: project.freelancerId,
-      deal_count: ((profile?.deal_count as number) ?? 0) + 1,
-    });
-
-    // Issue download token
+    // Issue download token — ON CONFLICT DO NOTHING guards against double-issuance
+    // if verify and webhook both fire at the same time (requires UNIQUE constraint
+    // on download_tokens.projectId in Supabase).
     const downloadToken = uuidv4();
-    const { error: tokenError } = await supabase.from('download_tokens').insert({
-      token: downloadToken,
-      projectId,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    });
+    const { error: tokenError } = await supabase.from('download_tokens').upsert(
+      {
+        token: downloadToken,
+        projectId,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      },
+      { onConflict: 'projectId', ignoreDuplicates: true }
+    );
 
     if (tokenError) {
       return NextResponse.json({ error: 'Failed to issue download token' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, downloadToken });
+    // If a token already existed (webhook beat us), fetch it
+    const { data: existingToken } = await supabase
+      .from('download_tokens')
+      .select('token')
+      .eq('projectId', projectId)
+      .single();
+
+    const finalToken = existingToken?.token ?? downloadToken;
+
+    // Send emails fire-and-forget — don't block the response
+    void sendPaymentReceivedToFreelancer({
+      freelancerEmail: project.freelancerEmail as string,
+      projectTitle: project.title as string,
+      amount: project.amount as number,
+      projectId,
+    });
+    // Buyer email requires their address — stored on the order; use freelancerEmail
+    // as a proxy if buyerEmail isn't on the project record yet
+    if (project.buyerEmail) {
+      void sendPaymentConfirmationToBuyer({
+        buyerEmail: project.buyerEmail as string,
+        projectTitle: project.title as string,
+        amount: project.amount as number,
+        projectId,
+        downloadToken: finalToken,
+      });
+    }
+
+    return NextResponse.json({ success: true, downloadToken: finalToken });
   } catch (err) {
     console.error('[POST /api/razorpay/verify]', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

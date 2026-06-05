@@ -6,14 +6,16 @@ import Link from 'next/link';
 import {
   CheckCircle, Clock, Copy, ExternalLink, ArrowLeft,
   IndianRupee, Briefcase, TrendingUp, ChevronDown, ChevronUp,
-  Plus, User, LogOut,
+  Plus, User, LogOut, AlertCircle,
 } from 'lucide-react';
+
+type ProjectStatus = 'pending' | 'paid' | 'released' | 'disputed';
 
 type Project = {
   projectId: string;
   title: string;
   amount: number;
-  status: 'pending' | 'paid';
+  status: ProjectStatus;
   proofFileUrl?: string;
   freelancerEmail: string;
 };
@@ -34,6 +36,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [resolving, setResolving] = useState<string | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -67,6 +70,38 @@ export default function Dashboard() {
     setTimeout(() => setCopied(null), 2000);
   };
 
+  const handleResolve = async (projectId: string, outcome: 'released' | 'refunded') => {
+    const label = outcome === 'released' ? 'release funds to yourself' : 'mark as refunded';
+    if (!confirm(`Are you sure you want to ${label}? This cannot be undone.`)) return;
+    setResolving(projectId);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                projects: prev.projects.map((p) =>
+                  p.projectId === projectId ? { ...p, status: outcome as ProjectStatus } : p
+                ),
+              }
+            : null
+        );
+      } else {
+        alert(json.error ?? 'Failed to resolve dispute.');
+      }
+    } catch {
+      alert('Network error — please try again.');
+    } finally {
+      setResolving(null);
+    }
+  };
+
   // ── Loading / auth ────────────────────────────────────────────────────────
 
   if (loading) {
@@ -86,7 +121,7 @@ export default function Dashboard() {
   }
 
   const { projects, totalEarned, paidCount } = data;
-  const pendingCount = projects.length - paidCount;
+  const pendingCount = projects.filter((p) => p.status === 'pending').length;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -177,7 +212,8 @@ export default function Dashboard() {
 
         {projects.map((project) => {
           const isExpanded = expandedId === project.projectId;
-          const isPaid = project.status === 'paid';
+          const isPaid = project.status === 'paid' || project.status === 'released';
+          const isDisputed = project.status === 'disputed';
           const shareUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/p/${project.projectId}`;
 
           return (
@@ -213,11 +249,15 @@ export default function Dashboard() {
 
                   {/* Status badge */}
                   <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                    isPaid
+                    isDisputed
+                      ? 'bg-red-500/15 text-red-400 border border-red-500/20'
+                      : project.status === 'released'
+                      ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                      : isPaid
                       ? 'bg-green-500/15 text-green-400 border border-green-500/20'
                       : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
                   }`}>
-                    {isPaid ? 'Paid' : 'Pending'}
+                    {isDisputed ? 'Disputed' : project.status === 'released' ? 'Released' : isPaid ? 'Paid' : 'Pending'}
                   </span>
 
                   {/* Expand chevron */}
@@ -252,11 +292,46 @@ export default function Dashboard() {
                     </div>
                     <div className="bg-white/5 rounded-lg p-3">
                       <p className="text-xs text-gray-500 mb-1">Status</p>
-                      <p className={`font-semibold ${isPaid ? 'text-green-400' : 'text-yellow-400'}`}>
-                        {isPaid ? '✓ Payment received' : '⏳ Awaiting payment'}
+                      <p className={`font-semibold ${
+                        isDisputed ? 'text-red-400' :
+                        project.status === 'released' ? 'text-blue-400' :
+                        isPaid ? 'text-green-400' : 'text-yellow-400'
+                      }`}>
+                        {isDisputed ? '⚠ Dispute open' :
+                         project.status === 'released' ? '✓ Funds released' :
+                         isPaid ? '✓ Payment received' : '⏳ Awaiting payment'}
                       </p>
                     </div>
                   </div>
+
+                  {/* Dispute resolution */}
+                  {isDisputed && (
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertCircle size={14} className="text-red-400 shrink-0" />
+                        <p className="text-sm text-red-400 font-medium">Dispute Open</p>
+                      </div>
+                      <p className="text-xs text-red-400/70 mb-3">
+                        Funds are frozen. Resolve the dispute to proceed.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleResolve(project.projectId, 'released')}
+                          disabled={resolving === project.projectId}
+                          className="flex-1 text-xs py-2 rounded-lg bg-green-500/15 text-green-400 hover:bg-green-500/25 border border-green-500/20 transition-colors disabled:opacity-40"
+                        >
+                          Release Funds
+                        </button>
+                        <button
+                          onClick={() => handleResolve(project.projectId, 'refunded')}
+                          disabled={resolving === project.projectId}
+                          className="flex-1 text-xs py-2 rounded-lg bg-white/5 text-gray-400 hover:text-white border border-white/10 hover:border-white/20 transition-colors disabled:opacity-40"
+                        >
+                          Mark Refunded
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Share link */}
                   <div>

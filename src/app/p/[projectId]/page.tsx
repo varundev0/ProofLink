@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ShieldCheck, Download, Lock, AlertCircle, ArrowLeft } from 'lucide-react';
-import { useMockRazorpay } from '@/lib/mocks/MockRazorpayProvider';
+import { MockRazorpayProvider, useMockRazorpay } from '@/lib/mocks/MockRazorpayProvider';
+
+type ProjectStatus = 'pending' | 'paid' | 'released' | 'disputed';
 
 type ProjectData = {
   project: {
@@ -12,7 +14,7 @@ type ProjectData = {
     freelancerEmail: string;
     title: string;
     amount: number;
-    status: 'pending' | 'paid';
+    status: ProjectStatus;
     proofFileUrl?: string;
   };
   freelancer: {
@@ -34,7 +36,7 @@ const loadRazorpayScript = (): Promise<boolean> =>
     document.body.appendChild(script);
   });
 
-export default function ClientGate() {
+function ClientGate() {
   const params = useParams();
   const { openModal } = useMockRazorpay();
 
@@ -42,6 +44,10 @@ export default function ClientGate() {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [downloadToken, setDownloadToken] = useState<string | null>(null);
+  const [disputeOpen, setDisputeOpen] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [disputeSubmitting, setDisputeSubmitting] = useState(false);
+  const [disputeDone, setDisputeDone] = useState(false);
 
   // ── Token storage helpers ─────────────────────────────────────────────────
   const tokenKey = `prooflink_token_${params.projectId}`;
@@ -184,8 +190,31 @@ export default function ClientGate() {
     }
   };
 
-  const handleReport = () => {
-    alert('Issue reported. Admin notified and funds flagged for review.');
+  const handleReport = () => setDisputeOpen(true);
+
+  const handleDisputeSubmit = async () => {
+    if (!downloadToken) return;
+    setDisputeSubmitting(true);
+    try {
+      const res = await fetch(`/api/projects/${params.projectId}/dispute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: downloadToken, reason: disputeReason }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setDisputeDone(true);
+        setData((prev) =>
+          prev ? { ...prev, project: { ...prev.project, status: 'disputed' as ProjectStatus } } : null
+        );
+      } else {
+        alert(json.error ?? 'Failed to submit dispute.');
+      }
+    } catch {
+      alert('Network error — please try again.');
+    } finally {
+      setDisputeSubmitting(false);
+    }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -207,10 +236,66 @@ export default function ClientGate() {
   }
 
   const { project, freelancer } = data;
-  const isPaid = project.status === 'paid';
+  // paid = funds held (24hr window); released = funds cleared; both unlock the file
+  const isUnlocked = project.status === 'paid' || project.status === 'released';
+  const isDisputed = project.status === 'disputed';
+  const isPaid = isUnlocked; // kept for template compatibility below
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6">
+      {/* Dispute Modal */}
+      {disputeOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0f0f0f] border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            {disputeDone ? (
+              <div className="text-center py-4">
+                <ShieldCheck className="text-yellow-400 mx-auto mb-3" size={36} />
+                <h2 className="text-lg font-bold text-white mb-2">Dispute Opened</h2>
+                <p className="text-sm text-gray-400 mb-4">
+                  Funds are frozen. The freelancer has been notified and will need to respond.
+                </p>
+                <button
+                  onClick={() => setDisputeOpen(false)}
+                  className="text-sm text-gray-400 hover:text-white transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertCircle className="text-red-400 shrink-0" size={20} />
+                  <h2 className="text-lg font-bold text-white">Report an Issue</h2>
+                </div>
+                <p className="text-sm text-gray-400 mb-4">
+                  Opening a dispute will freeze the funds and prevent auto-release until the issue is resolved.
+                </p>
+                <textarea
+                  value={disputeReason}
+                  onChange={(e) => setDisputeReason(e.target.value)}
+                  placeholder="Describe the issue (e.g. deliverable not as agreed, wrong files, etc.)"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white placeholder-gray-500 resize-none h-28 focus:outline-none focus:border-white/20"
+                />
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={() => setDisputeOpen(false)}
+                    className="flex-1 py-2.5 rounded-lg border border-white/10 text-sm text-gray-400 hover:text-white hover:border-white/20 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDisputeSubmit}
+                    disabled={disputeSubmitting || disputeReason.trim().length < 10}
+                    className="flex-1 py-2.5 rounded-lg bg-red-500/80 hover:bg-red-500 text-white text-sm font-semibold transition-colors disabled:opacity-40"
+                  >
+                    {disputeSubmitting ? 'Submitting...' : 'Submit Dispute'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       {/* Trust Badge */}
       <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-green-500/10 text-green-400 px-4 py-2 rounded-full border border-green-500/20 text-sm w-max max-w-full z-50">
         <ShieldCheck size={16} className="shrink-0" />
@@ -277,7 +362,17 @@ export default function ClientGate() {
             </div>
 
             <div className="space-y-4 mt-auto">
-              {isPaid ? (
+              {isDisputed ? (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertCircle className="text-red-400 shrink-0" size={16} />
+                    <p className="text-sm text-red-400 font-medium">Dispute In Progress</p>
+                  </div>
+                  <p className="text-xs text-red-400/70">
+                    Funds are frozen pending resolution. Downloads are unavailable until the dispute is resolved.
+                  </p>
+                </div>
+              ) : isPaid ? (
                 <>
                   <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 flex items-center justify-between mb-4">
                     <div>
@@ -337,5 +432,16 @@ export default function ClientGate() {
         </div>
       </div>
     </main>
+  );
+}
+
+// Wrap with MockRazorpayProvider so the dev mock modal works on this page only.
+// Once real Razorpay keys are configured, order.mock === false and this provider
+// is never invoked — it adds no overhead in production.
+export default function ClientGatePage() {
+  return (
+    <MockRazorpayProvider>
+      <ClientGate />
+    </MockRazorpayProvider>
   );
 }

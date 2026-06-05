@@ -16,6 +16,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { sendPaymentReceivedToFreelancer } from '@/lib/email';
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -63,23 +64,26 @@ export async function POST(request: Request) {
 
   if (project.status === 'paid') return NextResponse.json({ received: true });
 
-  await supabase.from('projects').update({ status: 'paid' }).eq('projectId', projectId);
+  await supabase.from('projects').update({ status: 'paid', paidAt: new Date().toISOString() }).eq('projectId', projectId);
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', project.freelancerId)
-    .single();
+  // Atomically increment deal count
+  await supabase.rpc('increment_deal_count', { user_id: project.freelancerId });
 
-  await supabase.from('profiles').upsert({
-    id: project.freelancerId,
-    deal_count: ((profile?.deal_count as number) ?? 0) + 1,
-  });
+  // Upsert download token — idempotent if verify already ran
+  await supabase.from('download_tokens').upsert(
+    {
+      token: uuidv4(),
+      projectId,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    },
+    { onConflict: 'projectId', ignoreDuplicates: true }
+  );
 
-  await supabase.from('download_tokens').insert({
-    token: uuidv4(),
+  void sendPaymentReceivedToFreelancer({
+    freelancerEmail: project.freelancerEmail as string,
+    projectTitle: project.title as string,
+    amount: project.amount as number,
     projectId,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
   });
 
   console.log('[webhook] payment.captured — project marked paid:', projectId);

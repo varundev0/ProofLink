@@ -32,7 +32,8 @@ export async function GET() {
     const { data: projects, error } = await supabase
       .from('projects')
       .select('*')
-      .eq('freelancerId', user.id);
+      .eq('freelancerId', user.id)
+      .order('created_at', { ascending: false });
 
     if (error) {
       return NextResponse.json({ error: 'Failed to fetch projects.' }, { status: 500 });
@@ -40,14 +41,14 @@ export async function GET() {
 
     const rows = (projects ?? []) as Record<string, unknown>[];
 
-    const sanitized = rows
-      .map(({ finalFileUrl: _omit, ...pub }) => pub)
-      .sort((a, b) => (b.projectId as string).localeCompare(a.projectId as string));
+    const sanitized = rows.map(({ finalFileUrl: _omit, ...pub }) => pub);
 
+    // Count paid + released as earned; disputed and pending are excluded
+    const earnedStatuses = new Set(['paid', 'released']);
     const totalEarned = sanitized
-      .filter((p) => p.status === 'paid')
+      .filter((p) => earnedStatuses.has(p.status as string))
       .reduce((sum, p) => sum + (p.amount as number), 0);
-    const paidCount = sanitized.filter((p) => p.status === 'paid').length;
+    const paidCount = sanitized.filter((p) => earnedStatuses.has(p.status as string)).length;
 
     return NextResponse.json({ projects: sanitized, totalEarned, paidCount });
   } catch (err) {

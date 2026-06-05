@@ -1,7 +1,15 @@
 /**
  * GET /api/projects/:projectId/download?token=<downloadToken>
  *
- * Validates a time-limited download token and returns a signed URL for the final file.
+ * Returns a Supabase Storage signed URL for the final file.
+ *
+ * Token validation strategy:
+ * - status 'paid'     → token must be valid and unexpired (24hr window still open)
+ * - status 'released' → token may be expired; we skip expiry check and issue a
+ *                       fresh signed URL directly, since funds have already cleared
+ *                       and the buyer has permanent download rights
+ * - status 'disputed' → blocked until resolved
+ * - status 'pending'  → blocked, no payment yet
  */
 
 import { NextResponse } from 'next/server';
@@ -20,41 +28,53 @@ export async function GET(
     return NextResponse.json({ error: 'Download token is required.' }, { status: 401 });
   }
 
+  // ── Project lookup first — status drives validation logic ─────────────────
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('projectId', projectId)
+    .single();
+
+  if (projectError || !project) {
+    return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
+  }
+
+  const status = project.status as string;
+
+  if (status === 'pending') {
+    return NextResponse.json({ error: 'Payment required to unlock file.' }, { status: 403 });
+  }
+
+  if (status === 'disputed') {
+    return NextResponse.json(
+      { error: 'A dispute is open on this project. Downloads are unavailable until resolved.' },
+      { status: 403 }
+    );
+  }
+
+  if (status !== 'paid' && status !== 'released') {
+    return NextResponse.json({ error: 'Project is not in a downloadable state.' }, { status: 403 });
+  }
+
   // ── Token validation ──────────────────────────────────────────────────────
   const { data: tokenRecord, error: tokenError } = await supabase
     .from('download_tokens')
     .select('*')
     .eq('token', token)
+    .eq('projectId', projectId)
     .single();
 
   if (tokenError || !tokenRecord) {
     return NextResponse.json({ error: 'Invalid download token.' }, { status: 403 });
   }
 
-  if (tokenRecord.projectId !== projectId) {
-    return NextResponse.json({ error: 'Token does not match project.' }, { status: 403 });
-  }
-
-  if (new Date(tokenRecord.expiresAt as string) < new Date()) {
+  // For 'paid' projects: enforce token expiry (24hr window is still open)
+  // For 'released' projects: skip expiry check — buyer has permanent rights
+  if (status === 'paid' && new Date(tokenRecord.expiresAt as string) < new Date()) {
     return NextResponse.json(
       { error: 'Download link has expired. Please contact the freelancer.' },
       { status: 403 }
     );
-  }
-
-  // ── Project lookup ────────────────────────────────────────────────────────
-  const { data: project, error } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('projectId', projectId)
-    .single();
-
-  if (error || !project) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-  }
-
-  if (project.status !== 'paid') {
-    return NextResponse.json({ error: 'Payment required to unlock file.' }, { status: 403 });
   }
 
   // ── Generate signed URL ───────────────────────────────────────────────────

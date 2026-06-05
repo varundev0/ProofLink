@@ -5,7 +5,7 @@
  * once you connect a real Supabase project.
  */
 
-export type ProjectStatus = 'pending' | 'paid';
+export type ProjectStatus = 'pending' | 'paid' | 'released' | 'disputed';
 
 export type Project = {
   projectId: string;
@@ -14,6 +14,7 @@ export type Project = {
   title: string;
   amount: number;
   status: ProjectStatus;
+  paidAt?: string;       // ISO timestamp — set when status transitions to 'paid'
   proofFileUrl?: string;
   finalFileUrl?: string; // Private — never sent to the client
 };

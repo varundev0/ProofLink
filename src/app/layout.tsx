@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { MockRazorpayProvider } from '@/lib/mocks/MockRazorpayProvider';
 
 export const metadata: Metadata = {
   title: 'Prooflink',
@@ -15,9 +14,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased bg-background text-gray-100 min-h-screen">
-        <MockRazorpayProvider>
-          {children}
-        </MockRazorpayProvider>
+        {children}
       </body>
     </html>
   );
