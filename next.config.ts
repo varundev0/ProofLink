@@ -18,7 +18,7 @@ export default withSentryConfig(nextConfig, {
   // Suppresses the Sentry CLI update check on every build
   silent: true,
   // Hides source maps from the browser bundle (uploaded to Sentry instead)
-  hideSourceMaps: true,
-  // Automatically tree-shake Sentry logger statements in production
-  disableLogger: true,
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: true,
+  },
 });
