@@ -1,11 +1,11 @@
 /**
- * Next.js Middleware — Session Refresh + Rate Limiting
+ * Next.js Proxy — Session Refresh + Rate Limiting
  *
  * Two responsibilities:
  * 1. Refresh Supabase JWT on every request so sessions don't expire silently
  * 2. Rate limit sensitive API routes to prevent abuse
  *
- * Rate limiting uses @upstash/ratelimit + @upstash/redis (free tier is sufficient).
+ * Rate limiting uses Upstash Redis REST API directly (no SDK needed).
  * Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in your env vars.
  *
  * If Upstash env vars are not set, rate limiting is skipped (graceful degradation
@@ -95,7 +95,7 @@ async function applyRateLimit(
   return null;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
   // ── Rate limiting (API routes only) ───────────────────────────────────────
@@ -130,7 +130,7 @@ export async function middleware(request: NextRequest) {
 
     await supabase.auth.getUser();
   } catch (err) {
-    console.error('[middleware] Supabase client error:', err);
+    console.error('[proxy] Supabase client error:', err);
 
     // API routes get a 503 — callers need a signal that the service is misconfigured.
     // Non-API routes pass through; the app layer will surface auth errors as needed.
