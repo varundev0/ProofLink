@@ -1,0 +1,14 @@
+name: Release Funds Cron
+
+on:
+  schedule:
+    - cron: '0 * * * *' # every hour
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger release cron
+        run: |
+          curl -f -X GET "${{ vars.APP_URL }}/api/cron/release" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
