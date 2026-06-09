@@ -18,6 +18,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { verifySameOrigin } from '@/lib/csrf';
 
 const ALLOWED_PROOF_MIME_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif',
@@ -59,7 +60,32 @@ const watermarkImage = async (buffer: Buffer): Promise<Buffer> => {
   return image.composite([{ input: watermark, top: 0, left: 0 }]).jpeg({ quality: 82 }).toBuffer();
 };
 
+// MIME types and extensions that must never be served from the finals bucket —
+// they would execute in a browser if opened directly via a signed URL.
+const BLOCKED_FINAL_MIME_TYPES = new Set([
+  'text/html', 'application/xhtml+xml',
+  'image/svg+xml',
+  'application/x-httpd-php', 'text/php',
+  'application/x-sh', 'text/x-sh', 'application/x-csh',
+  'application/javascript', 'text/javascript',
+  'application/x-msdownload', 'application/x-msdos-program',
+  'application/x-executable',
+]);
+
+const BLOCKED_FINAL_EXTENSIONS = new Set([
+  '.html', '.htm', '.xhtml', '.svg', '.svgz',
+  '.php', '.php3', '.php4', '.php5', '.phtml',
+  '.sh', '.bash', '.zsh', '.fish',
+  '.exe', '.dll', '.bat', '.cmd', '.ps1', '.vbs', '.wsf',
+  '.js', '.mjs', '.cjs',
+  '.jar', '.war',
+]);
+
 export async function POST(request: Request) {
+  if (!verifySameOrigin(request)) {
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  }
+
   // Auth check uses the user-session client
   const supabase = await createSupabaseServerClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -122,6 +148,13 @@ export async function POST(request: Request) {
     }
 
     const ext = path.extname(file.name).toLowerCase() || '.bin';
+
+    if (BLOCKED_FINAL_MIME_TYPES.has(file.type) || BLOCKED_FINAL_EXTENSIONS.has(ext)) {
+      return NextResponse.json(
+        { error: 'This file type cannot be used as a final deliverable.' },
+        { status: 415 }
+      );
+    }
     const filename = `${uuidv4()}${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 

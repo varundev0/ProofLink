@@ -84,7 +84,7 @@ export async function GET(
     const filename = finalFileUrl.replace('finals://', '');
     const { data: signedData, error: signedError } = await supabase.storage
       .from('finals')
-      .createSignedUrl(filename, 3600);
+      .createSignedUrl(filename, 3600, { download: true });
 
     if (signedError || !signedData) {
       return NextResponse.json({ error: 'Failed to generate download link.' }, { status: 500 });

@@ -20,7 +20,8 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      // Return a generic message to prevent email enumeration
+      return NextResponse.json({ error: 'Could not create account. Please try again.' }, { status: 400 });
     }
 
     const user = data.user;

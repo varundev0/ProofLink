@@ -33,6 +33,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    // Only pending projects can be paid — reject anything already paid, disputed, etc.
+    if (project.status !== 'pending') {
+      return NextResponse.json(
+        { error: 'This project is not available for payment.' },
+        { status: 409 }
+      );
+    }
+
     const keyId = process.env.RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
 

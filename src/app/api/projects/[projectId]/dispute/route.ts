@@ -35,6 +35,12 @@ export async function POST(
       { status: 400 }
     );
   }
+  if (reason.length > 2000) {
+    return NextResponse.json(
+      { error: 'Reason must be 2000 characters or fewer.' },
+      { status: 400 }
+    );
+  }
 
   const supabase = createSupabaseServiceClient();
 

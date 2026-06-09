@@ -54,11 +54,13 @@ function ClientGate() {
 
   const persistToken = (token: string) => {
     setDownloadToken(token);
-    try { localStorage.setItem(tokenKey, token); } catch { /* private browsing */ }
+    // sessionStorage clears when the tab closes, limiting XSS exfiltration window
+    // vs localStorage which persists indefinitely across sessions.
+    try { sessionStorage.setItem(tokenKey, token); } catch { /* private browsing */ }
   };
 
   const restoreToken = (): string | null => {
-    try { return localStorage.getItem(tokenKey); } catch { return null; }
+    try { return sessionStorage.getItem(tokenKey); } catch { return null; }
   };
 
   useEffect(() => {

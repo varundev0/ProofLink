@@ -16,13 +16,28 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 // Rate limit rules per route prefix
-// key: path prefix, value: [requests, window]
-const RATE_LIMITS: Record<string, { requests: number; window: string }> = {
-  '/api/auth/signin':      { requests: 10,  window: '15 m' },
-  '/api/auth/signup':      { requests: 5,   window: '15 m' },
-  '/api/upload':           { requests: 20,  window: '1 h'  },
-  '/api/razorpay/order':   { requests: 30,  window: '1 h'  },
+// key: path prefix, value: [requests, window in ms]
+const RATE_LIMITS: Record<string, { requests: number; window: string; windowMs: number }> = {
+  '/api/auth/signin':    { requests: 10, window: '15 m', windowMs: 15 * 60 * 1000 },
+  '/api/auth/signup':    { requests: 5,  window: '15 m', windowMs: 15 * 60 * 1000 },
+  '/api/upload':         { requests: 20, window: '1 h',  windowMs: 60 * 60 * 1000 },
+  '/api/razorpay/order': { requests: 30, window: '1 h',  windowMs: 60 * 60 * 1000 },
 };
+
+// In-memory fallback store — resets on cold start, sufficient for Vercel edge functions
+const inMemoryStore = new Map<string, { count: number; resetAt: number }>();
+
+function inMemoryLimit(key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  const entry = inMemoryStore.get(key);
+  if (!entry || now > entry.resetAt) {
+    inMemoryStore.set(key, { count: 1, resetAt: now + windowMs });
+    return true; // allowed
+  }
+  if (entry.count >= limit) return false; // blocked
+  entry.count++;
+  return true;
+}
 
 async function applyRateLimit(
   request: NextRequest,
@@ -31,19 +46,34 @@ async function applyRateLimit(
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-  // Graceful degradation — skip if Upstash not configured
-  if (!url || !token) return null;
-
   const rule = Object.entries(RATE_LIMITS).find(([prefix]) => path.startsWith(prefix));
   if (!rule) return null;
 
-  const [prefix, { requests, window: windowStr }] = rule;
+  const [prefix, { requests, window: windowStr, windowMs }] = rule;
 
-  // Derive a stable key: route + IP
   const ip =
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
     request.headers.get('x-real-ip') ??
     'anonymous';
+
+  // If Upstash not configured, use in-memory fallback (protects prod if Redis creds missing)
+  if (!url || !token) {
+    const allowed = inMemoryLimit(`rl:${prefix}:${ip}`, requests, windowMs);
+    if (!allowed) {
+      return new NextResponse(
+        JSON.stringify({ error: 'Too many requests. Please try again later.' }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(Math.ceil(windowMs / 1000)),
+          },
+        }
+      );
+    }
+    return null;
+  }
+
   const key = `rl:${prefix}:${ip}`;
 
   // Parse window to seconds

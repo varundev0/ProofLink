@@ -17,12 +17,17 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { sendDisputeResolvedToParties } from '@/lib/email';
+import { verifySameOrigin } from '@/lib/csrf';
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   const { projectId } = await params;
+
+  if (!verifySameOrigin(request)) {
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  }
 
   // Auth — only the owning freelancer can resolve
   const supabase = await createSupabaseServerClient();

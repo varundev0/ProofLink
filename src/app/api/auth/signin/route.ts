@@ -13,7 +13,8 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
+      // Return a generic message to prevent email enumeration
+      return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
     }
 
     const user = data.user;

@@ -16,8 +16,13 @@ import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { sendFundsReleasedToFreelancer } from '@/lib/email';
 
 export async function GET(request: Request) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error('[cron/release] CRON_SECRET is not set — endpoint disabled');
+    return new Response('Forbidden', { status: 403 });
+  }
   const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return new Response('Unauthorized', { status: 401 });
   }
 

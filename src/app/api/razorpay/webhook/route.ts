@@ -22,17 +22,20 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
   const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
-  if (webhookSecret) {
-    const signature = request.headers.get('x-razorpay-signature');
-    if (!signature) return new Response('Missing signature', { status: 400 });
-
-    const expectedSignature = crypto
-      .createHmac('sha256', webhookSecret)
-      .update(rawBody)
-      .digest('hex');
-
-    if (expectedSignature !== signature) return new Response('Invalid signature', { status: 400 });
+  if (!webhookSecret) {
+    console.error('[webhook] RAZORPAY_WEBHOOK_SECRET is not set — rejecting all webhooks');
+    return new Response('Forbidden', { status: 403 });
   }
+
+  const signature = request.headers.get('x-razorpay-signature');
+  if (!signature) return new Response('Missing signature', { status: 400 });
+
+  const expectedSignature = crypto
+    .createHmac('sha256', webhookSecret)
+    .update(rawBody)
+    .digest('hex');
+
+  if (expectedSignature !== signature) return new Response('Invalid signature', { status: 400 });
 
   let event: { event: string; payload: { payment: { entity: Record<string, unknown> } } };
   try {

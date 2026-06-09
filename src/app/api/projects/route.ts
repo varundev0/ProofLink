@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { verifySameOrigin } from '@/lib/csrf';
+import { validateProjectInput } from '@/lib/validate';
 
 const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const MAX_RETRIES = 5;
@@ -63,6 +65,10 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
+    if (!verifySameOrigin(request)) {
+      return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+    }
+
     const supabase = await createSupabaseServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -73,14 +79,13 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { title, amount: rawAmount, proofFileUrl, finalFileUrl } = body;
 
-    if (!title || typeof title !== 'string' || !title.trim()) {
-      return NextResponse.json({ error: 'Title is required.' }, { status: 400 });
+    try {
+      validateProjectInput(title, rawAmount);
+    } catch (err) {
+      return NextResponse.json({ error: (err as Error).message }, { status: 400 });
     }
 
     const amount = parseFloat(rawAmount);
-    if (isNaN(amount) || amount < 1) {
-      return NextResponse.json({ error: 'Amount must be a number of at least ₹1.' }, { status: 400 });
-    }
 
     const projectId = await generateUniqueId();
     if (!projectId) {
